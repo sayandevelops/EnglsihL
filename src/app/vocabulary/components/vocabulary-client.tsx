@@ -2,61 +2,21 @@
 "use client";
 
 import { useState, useTransition } from 'react';
-import { grammarAssistance } from '@/ai/flows/grammar-assistance';
-import type { GrammarAssistanceInput, GrammarAssistanceOutput } from '@/ai/flows/grammar-assistance';
+import { explainVocabulary } from '@/ai/flows/vocabulary-explainer';
+import type { VocabularyExplainerInput, VocabularyExplainerOutput } from '@/ai/flows/vocabulary-explainer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, AlertCircle } from 'lucide-react';
-
-interface ParsedVocabulary {
-  word?: string;
-  meaningEnglish?: string;
-  meaningNative?: string;
-  pronunciation?: string;
-  example?: string;
-  usageTip?: string;
-  rawExplanation?: string;
-}
-
-// Best-effort parser for the AI's free-form output
-function parseVocabularyOutput(text: string, correctedText: string): ParsedVocabulary {
-  const result: ParsedVocabulary = { word: correctedText, rawExplanation: text };
-  const lines = text.split('\\n').map(line => line.trim());
-
-  lines.forEach(line => {
-    if (line.toLowerCase().startsWith("meaning (english):")) {
-      result.meaningEnglish = line.substring("Meaning (English):".length).trim();
-    } else if (line.match(/meaning \((.*?)\):/i)) {
-        const match = line.match(/meaning \((.*?)\):/i);
-        if (match && match[1].toLowerCase() !== 'english') {
-             result.meaningNative = line.substring(match[0].length).trim();
-        }
-    } else if (line.toLowerCase().startsWith("pronunciation:")) {
-      result.pronunciation = line.substring("Pronunciation:".length).trim();
-    } else if (line.toLowerCase().startsWith("example:")) {
-      result.example = line.substring("Example:".length).trim();
-    } else if (line.toLowerCase().startsWith("usage tip:")) {
-      result.usageTip = line.substring("Usage Tip:".length).trim();
-    }
-  });
-  
-  // If specific fields are not found, try to extract from a less structured explanation
-  if (!result.meaningEnglish && !result.meaningNative && !result.pronunciation && !result.example) {
-    // This is a fallback and might not be very accurate
-    // For now, just keeping rawExplanation is safer
-  }
-
-  return result;
-}
-
+import { Loader2, AlertCircle, BookOpenCheck, Sparkles, ListMinus, ListPlus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 
 export default function VocabularyClient() {
   const [word, setWord] = useState('');
   const [languageCode, setLanguageCode] = useState('');
-  const [result, setResult] = useState<ParsedVocabulary | null>(null);
+  const [result, setResult] = useState<VocabularyExplainerOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -71,19 +31,15 @@ export default function VocabularyClient() {
 
     startTransition(async () => {
       try {
-        const input: GrammarAssistanceInput = { 
-          text: `Explain the word: "${word}" including its meaning in English, IPA pronunciation, an example sentence, and a usage tip.`,
+        const input: VocabularyExplainerInput = { 
+          word: word.trim(),
         };
         if (languageCode.trim()) {
-          input.text += ` Also provide the meaning in ${languageCode}.`;
-          input.languageCode = languageCode.trim();
+          input.nativeLanguageCode = languageCode.trim();
         }
         
-        const aiOutput: GrammarAssistanceOutput = await grammarAssistance(input);
-        // The AI flow returns `correctedText` and `explanation`.
-        // We'll use `correctedText` as the word (hopefully it's the same or a correction)
-        // and parse `explanation` for the details.
-        setResult(parseVocabularyOutput(aiOutput.explanation, aiOutput.correctedText));
+        const aiOutput = await explainVocabulary(input);
+        setResult(aiOutput);
       } catch (e) {
         console.error(e);
         setError('Failed to get vocabulary information. Please try again.');
@@ -103,7 +59,7 @@ export default function VocabularyClient() {
                 type="text"
                 value={word}
                 onChange={(e) => setWord(e.target.value)}
-                placeholder="e.g., enthusiastic"
+                placeholder="e.g., enthusiastic, ubiquitous"
                 className="mt-1 text-base"
                 required
               />
@@ -118,9 +74,10 @@ export default function VocabularyClient() {
                 placeholder="e.g., bn (Bengali), hi (Hindi), es (Spanish)"
                 className="mt-1 text-base"
               />
+              <p className="text-sm text-muted-foreground mt-1">For translation to your native language.</p>
             </div>
             <Button type="submit" disabled={isPending} className="w-full text-base py-3">
-              {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : 'Get Definition'}
+              {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <><Sparkles className="mr-2 h-5 w-5" /> Explain Word</>}
             </Button>
           </form>
         </CardContent>
@@ -135,32 +92,69 @@ export default function VocabularyClient() {
       )}
 
       {result && (
-        <Card className="shadow-lg bg-gradient-to-br from-primary/10 via-background to-background">
+        <Card className="shadow-lg bg-gradient-to-br from-primary/5 via-background to-background">
           <CardHeader>
-            <CardTitle className="text-3xl font-bold text-primary">{result.word || "Word Details"}</CardTitle>
+            <CardTitle className="text-3xl font-bold text-primary flex items-center">
+              <BookOpenCheck className="h-8 w-8 mr-3"/>
+              {result.word}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-lg">
-            {result.meaningEnglish && (
-              <p><strong>Meaning (English):</strong> {result.meaningEnglish}</p>
+          <CardContent className="space-y-4 text-lg">
+            <div>
+              <h3 className="font-semibold text-xl mb-1 text-accent-foreground">Meaning (English):</h3>
+              <p className="p-3 bg-secondary/30 border border-border rounded-md">{result.meaningEnglish}</p>
+            </div>
+
+            {result.nativeLanguageTranslation && (
+              <div>
+                <h3 className="font-semibold text-xl mb-1 text-accent-foreground">Translation ({languageCode || result.nativeLanguageTranslation.split(':')[0].trim()}):</h3>
+                <p className="p-3 bg-secondary/30 border border-border rounded-md">{result.nativeLanguageTranslation}</p>
+              </div>
             )}
-            {result.meaningNative && (
-              <p><strong>Meaning ({languageCode || 'Native'}):</strong> {result.meaningNative}</p>
+
+            {result.pronunciationIPA && (
+              <div>
+                <h3 className="font-semibold text-xl mb-1 text-accent-foreground">Pronunciation (IPA):</h3>
+                <p className="p-3 bg-secondary/30 border border-border rounded-md font-mono text-base">{result.pronunciationIPA}</p>
+              </div>
             )}
-            {result.pronunciation && (
-              <p><strong>Pronunciation:</strong> <span className="font-mono">{result.pronunciation}</span></p>
-            )}
-            {result.example && (
-              <p><strong>Example:</strong> <em>{result.example}</em></p>
-            )}
+            
+            <div>
+              <h3 className="font-semibold text-xl mb-1 text-accent-foreground">Example Sentence:</h3>
+              <p className="italic p-3 bg-secondary/30 border border-border rounded-md">"{result.exampleSentence}"</p>
+            </div>
+
             {result.usageTip && (
-              <p><strong>Usage Tip:</strong> {result.usageTip}</p>
+              <div>
+                <h3 className="font-semibold text-xl mb-1 text-accent-foreground">Usage Tip:</h3>
+                <p className="p-3 bg-secondary/30 border border-border rounded-md">{result.usageTip}</p>
+              </div>
             )}
-            {(!result.meaningEnglish && !result.pronunciation && result.rawExplanation) && (
-                 <div>
-                    <p><strong>Explanation:</strong></p>
-                    <p className="whitespace-pre-wrap">{result.rawExplanation}</p>
-                 </div>
+            
+            <Separator className="my-6"/>
+
+            {result.synonyms && result.synonyms.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-xl mb-2 text-accent-foreground flex items-center"><ListPlus className="h-6 w-6 mr-2 text-green-600"/>Synonyms:</h3>
+                <div className="flex flex-wrap gap-2">
+                  {result.synonyms.map((s, i) => (
+                    <Badge key={i} variant="outline" className="text-base bg-green-100 border-green-300 text-green-800">{s}</Badge>
+                  ))}
+                </div>
+              </div>
             )}
+
+            {result.antonyms && result.antonyms.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-xl mb-2 text-accent-foreground flex items-center"><ListMinus className="h-6 w-6 mr-2 text-red-600"/>Antonyms:</h3>
+                <div className="flex flex-wrap gap-2">
+                  {result.antonyms.map((a, i) => (
+                    <Badge key={i} variant="outline" className="text-base bg-red-100 border-red-300 text-red-800">{a}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            
           </CardContent>
         </Card>
       )}
