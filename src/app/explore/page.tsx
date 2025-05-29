@@ -1,8 +1,13 @@
 
+"use client"; // Make this a client component for auth check
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { BookOpenText, Mic, MessageSquare, SpellCheck2, List, ArrowRight } from "lucide-react";
+import { BookOpenText, Mic, MessageSquare, SpellCheck2, List, ArrowRight, Loader2 } from "lucide-react";
 import Image from "next/image";
 
 const features = [
@@ -54,6 +59,23 @@ const features = [
 ];
 
 export default function ExplorePage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  if (loading || !user) {
+    return (
+      <div className="flex h-[calc(100vh-theme(spacing.32))] items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8">
       <header className="mb-12 text-center">
